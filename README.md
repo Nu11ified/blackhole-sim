@@ -8,23 +8,23 @@ Interactive 2D ray-tracing inspired simulation of light paths near a Schwarzschi
 
 ```mermaid
 flowchart LR
-  A[Spawn initial state\n(p0, v0)] --> B[Physics Integrator\nΔθ bending + step]
+  A["Spawn initial state<br/>(p0, v0)"] --> B["Physics Integrator<br/>Δθ bending + step"]
   B --> C{Outcome?}
-  C -- r < r_ph --> C1[Captured]
-  C -- r > R_max --> C2[Escaped]
+  C -- "r < r_ph" --> C1[Captured]
+  C -- "r > R_max" --> C2[Escaped]
   C -->|continue| B
 
   A -. log .-> D1[(Dataset)]
-  C1 -. label -1 .-> D1
-  C2 -. label +1 .-> D1
+  C1 -. "label -1" .-> D1
+  C2 -. "label +1" .-> D1
 
-  D1 --> E[Scaler (z-score)]
-  E --> F[RFF φ(x) ~ RBF]
-  F --> G[Linear SVM (hinge)]
-  G --> H[Platt scaling\nP(y=1|s)]
+  D1 --> E["Scaler (z-score)"]
+  E --> F["RFF φ(x) ~ RBF"]
+  F --> G["Linear SVM (hinge)"]
+  G --> H["Platt scaling<br/>P(y=1|s)"]
 
   A -. predict .-> E
-  E --> F --> G --> H --> I[Color ray\n(green/red)]
+  E --> F --> G --> H --> I["Color ray<br/>(green/red)"]
 ```
 
 ## Physics
