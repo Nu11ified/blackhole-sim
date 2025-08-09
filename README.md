@@ -2,6 +2,8 @@
 
 Interactive 2D ray-tracing inspired simulation of light paths near a Schwarzschild black hole. Rendered with raylib, UI with ImGui (scaffolded), math with Eigen, and online learning with a linear SVM trained on Random Fourier Features (RBF approximation) and calibrated via Platt scaling.
 
+![Demo](img/demo.png)
+
 ### High-level system
 
 ```mermaid
