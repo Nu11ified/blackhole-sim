@@ -43,11 +43,7 @@ flowchart LR
 
   Rotate velocity by the 2×2 rotation matrix with angle `Δθ`.
 
-- Photon sphere and capture condition:
-
-  $$ r_{\mathrm{ph}} = \frac{3GM}{c^2} $$
-
-  Capture if $r < r_{\mathrm{ph}}$.
+- Photon sphere and capture condition: $r_{\mathrm{ph}} = \frac{3GM}{c^2}$. Capture if $r < r_{\mathrm{ph}}$.
 
 - Integrator (per frame for each ray):
   1) Check `r < r_ph` → captured; 2) compute `Δθ` and rotate velocity; 3) renormalize |v|→c; 4) update `p ← p + vΔt`.
