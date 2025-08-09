@@ -1,0 +1,19 @@
+# Build artifacts
+build/
+cmake-build-*/
+
+# macOS
+.DS_Store
+
+# IDE/editor
+.cache/
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# CMake
+compile_commands.json
+
+
