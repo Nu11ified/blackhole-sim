@@ -33,19 +33,19 @@ flowchart LR
 
 - Newtonian acceleration with softening:
 
-  \[\mathbf{a}(\mathbf{p}) = -\frac{GM}{(r^2+\epsilon^2)^{3/2}}\,\mathbf{p}\]
+  $$\mathbf{a}(\mathbf{p}) = -\frac{GM}{(r^2+\epsilon^2)^{3/2}}\,\mathbf{p}$$
 
   - `G` is a scaled gravitational constant; `M` is black hole mass; `\epsilon` avoids the singularity.
 
 - Small-angle relativistic bending (velocity rotation each frame):
 
-  \[\Delta\theta \approx \frac{4GM\,\Delta t}{c^2\,r^2}\]
+  $$\Delta\theta \approx \frac{4GM\,\Delta t}{c^2\,r^2}$$
 
   Rotate velocity by the 2×2 rotation matrix with angle `Δθ`.
 
 - Photon sphere and capture condition:
 
-  \[ r_{\text{ph}} = \frac{3GM}{c^2},\quad r < r_{\text{ph}} \Rightarrow \text{captured} \]
+  $$ r_{\text{ph}} = \frac{3GM}{c^2},\quad r < r_{\text{ph}} \Rightarrow \text{captured} $$
 
 - Integrator (per frame for each ray):
   1) Check `r < r_ph` → captured; 2) compute `Δθ` and rotate velocity; 3) renormalize |v|→c; 4) update `p ← p + vΔt`.
