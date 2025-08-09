@@ -45,7 +45,9 @@ flowchart LR
 
 - Photon sphere and capture condition:
 
-  $$ r_{\text{ph}} = \frac{3GM}{c^2},\quad r < r_{\text{ph}} \Rightarrow \text{captured} $$
+  $$ r_{\mathrm{ph}} = \frac{3GM}{c^2} $$
+
+  Capture if $r < r_{\mathrm{ph}}$.
 
 - Integrator (per frame for each ray):
   1) Check `r < r_ph` → captured; 2) compute `Δθ` and rotate velocity; 3) renormalize |v|→c; 4) update `p ← p + vΔt`.
