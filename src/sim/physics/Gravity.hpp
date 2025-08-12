@@ -9,7 +9,7 @@ struct GravityParams {
     double gravitationalConstant;   // G (scaled for simulation)
     double blackHoleMass;           // M
     double softeningRadius;         // epsilon to avoid singularity at r=0
-    double relativisticBendFactor;  // dimensionless accel tweak multiplier; 0 disables accel tweak
+    double relativisticBendFactor;  // legacy tweak (kept for compat); not used in GR step
     double speedOfLight;            // c in simulation units
     double bendingAngleScale;       // multiplier applied to delta-theta (1.0 = physical scale)
 
@@ -32,22 +32,35 @@ inline Vec2 computeAcceleration(const Vec2& position, const GravityParams& param
 
     Vec2 acceleration = - (params.gravitationalConstant * params.blackHoleMass) * inv_r3 * position;
 
-    // Relativistic bending tweak (simple multiplier). Keeping it off by default (0 => multiplier 1).
+    // Legacy tweak multiplier retained for backward compatibility if nonzero
     const double tweakMultiplier = 1.0 + params.relativisticBendFactor;
     return tweakMultiplier * acceleration;
 }
 
-// Relativistic bending per-frame small-angle approximation:
-// Δθ ≈ (4 G M / (c^2 r)) * (Δt / r) = 4 G M Δt / (c^2 r^2)
-inline double computeRelativisticBendingDeltaTheta(const Vec2& position,
-                                                   const GravityParams& params,
-                                                   double deltaTimeSeconds) {
-    const double epsilon = params.softeningRadius;
-    const double r2 = position.squaredNorm() + epsilon * epsilon;
+// Schwarzschild length scales
+inline double schwarzschildRadius(const GravityParams& params) {
+    // R_s = 2 G M / c^2
     const double c2 = params.speedOfLight * params.speedOfLight;
-    const double base = 4.0 * params.gravitationalConstant * params.blackHoleMass * deltaTimeSeconds;
-    const double deltaTheta = (r2 > 0.0) ? (base / (c2 * r2)) : 0.0;
-    return params.bendingAngleScale * deltaTheta;
+    return 2.0 * params.gravitationalConstant * params.blackHoleMass / c2;
+}
+
+// Photon sphere radius for Schwarzschild BH: r_photon = 3 G M / c^2 = 1.5 R_s
+inline double photonSphereRadius(const GravityParams& params) {
+    return 1.5 * schwarzschildRadius(params);
+}
+
+// GR-inspired local curvature rate for light: w = (R_s * c) / r^2
+// Returns angular speed (rad/s) controlling how quickly the velocity direction turns toward -r_hat.
+inline double localCurvatureOmega(const Vec2& position, const GravityParams& params) {
+    const double rs = schwarzschildRadius(params);
+    const double r2 = position.squaredNorm() + params.softeningRadius * params.softeningRadius;
+    // Factor 2 to better match far-field GR deflection 2 R_s / b
+    return params.bendingAngleScale * (2.0 * rs * params.speedOfLight) / std::max(r2, 1e-18);
+}
+
+// Critical impact parameter for capture from infinity: b_c = (3*sqrt(3)/2) * R_s
+inline double criticalImpactParameter(const GravityParams& params) {
+    return 0.5 * 3.0 * std::sqrt(3.0) * schwarzschildRadius(params);
 }
 
 // Rotate velocity by a signed angle using a 2D rotation.
@@ -58,12 +71,6 @@ inline Vec2 rotateVelocity(const Vec2& velocity, double signedAngleRadians) {
                 s * velocity.x() + c * velocity.y());
 }
 
-// Photon sphere radius for Schwarzschild BH: r_photon = 3 G M / c^2
-inline double photonSphereRadius(const GravityParams& params) {
-    const double c2 = params.speedOfLight * params.speedOfLight;
-    return 3.0 * params.gravitationalConstant * params.blackHoleMass / c2;
-}
-
 // Capture condition: r < r_photon
 inline bool isCapturedByPhotonSphere(const Vec2& position, const GravityParams& params) {
     const double r = position.norm();
@@ -71,5 +78,3 @@ inline bool isCapturedByPhotonSphere(const Vec2& position, const GravityParams& 
 }
 
 } // namespace sim::physics
-
-

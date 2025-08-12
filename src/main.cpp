@@ -2,6 +2,7 @@
 #include <vector>
 #include <random>
 #include <cmath>
+#include <algorithm>
 #include "sim/math/Vec.hpp"
 #include "sim/physics/Gravity.hpp"
 #include "sim/physics/Integrator.hpp"
@@ -44,20 +45,19 @@ int main() {
         1e-3, // epsilon
         0.0,  // accel tweak factor (off)
         1.0,  // c
-        1.0   // bending angle scale
+        2.5   // bending angle scale (tunable with [ and ])
     );
 
     // Rendering params
-    float pixelsPerUnit = 50.0f; // zoom out: more space around the black hole
-    const double c2 = grav.speedOfLight * grav.speedOfLight;
-    const float r_s = static_cast<float>(2.0 * grav.gravitationalConstant * grav.blackHoleMass / c2);
+    float pixelsPerUnit = 30.0f; // wider view to see bending and plunge
+    const float r_s = static_cast<float>(sim::physics::schwarzschildRadius(grav));
     const float r_ph = static_cast<float>(sim::physics::photonSphereRadius(grav));
 
     // Accretion disk state
     float diskAngle = 0.0f;              // radians
     const float diskAngularSpeed = 0.6f; // rad/s
     const float diskInner = 1.2f * r_s;
-    const float diskOuter = 1.8f * r_s; // thinner, smaller disk
+    const float diskOuter = 3.5f * r_s; // extend a bit for nicer visuals
 
     // Background stars in world space
     std::vector<sim::Vec2> starsWorld;
@@ -72,7 +72,7 @@ int main() {
     }
 
     // Ray container (multiple rays)
-    struct RenderRay { sim::physics::LightRay ray; Color color; std::vector<sim::Vec2> trail; };
+    struct RenderRay { sim::physics::LightRay ray; Color color; std::vector<sim::Vec2> trail; bool wasCaptured{false}; };
     std::vector<RenderRay> rays;
     rays.reserve(256);
 
@@ -92,7 +92,7 @@ int main() {
     std::uniform_real_distribution<float> jitterDist(-0.2f, 0.2f); // radians
     const float worldRadiusMax = std::min(halfWWorld, halfHWorld);
     float spawnRadius = worldRadiusMax * 0.95f; // near edge of screen
-    const float spawnPerSecond = 15.0f; // slightly higher rate to visualize flow
+    const float spawnPerSecond = 18.0f; // populate scene a bit more
     double spawnAccumulator = 0.0;
 
     while (!WindowShouldClose()) {
@@ -109,7 +109,7 @@ int main() {
             // Tangential direction with clearer inward bias to curve around BH
             sim::Vec2 tangent(-std::sin(ang), std::cos(ang));
             sim::Vec2 inward = -p0.normalized();
-            sim::Vec2 dir = (0.7 * tangent + 0.3 * inward);
+            sim::Vec2 dir = (0.45 * tangent + 0.55 * inward); // slight inward bias to encourage capture
             dir.normalize();
             // Small jitter
             dir = sim::physics::rotateVelocity(dir, static_cast<double>(jitterDist(rng)));
@@ -209,6 +209,20 @@ int main() {
                     rr.ray.captured = true;
                 }
             }
+            // If newly captured, extend the trail to the horizon for visual continuity
+            if (rr.ray.captured && !rr.wasCaptured) {
+                rr.wasCaptured = true;
+                rr.color = RED;
+                sim::Vec2 p = rr.trail.empty() ? rr.ray.position : rr.trail.back();
+                for (int i = 0; i < 24; ++i) {
+                    const double rnow = p.norm();
+                    if (rnow <= r_s) break;
+                    sim::Vec2 inward = (rnow > 0.0) ? (-p / rnow) : sim::Vec2(-1.0, 0.0);
+                    double stepLen = std::max(0.002, 0.05 * (rnow - r_s));
+                    p += inward * stepLen;
+                    rr.trail.push_back(p);
+                }
+            }
         }
 
         // Animate disk
@@ -217,13 +231,29 @@ int main() {
         BeginDrawing();
         ClearBackground(BLACK);
 
-        // Stars with simple gravitational lensing: p' = p + k * p / ||p||^2
-        const double lensK = 0.5 * static_cast<double>(r_s) * static_cast<double>(r_s);
+        // Controls: adjust bending scale with [ and ]; zoom with -/=
+        if (IsKeyPressed(KEY_LEFT_BRACKET)) {
+            grav.bendingAngleScale = std::max(0.1, grav.bendingAngleScale * 0.8);
+        }
+        if (IsKeyPressed(KEY_RIGHT_BRACKET)) {
+            grav.bendingAngleScale = std::min(10.0, grav.bendingAngleScale * 1.25);
+        }
+        if (IsKeyPressed(KEY_MINUS)) {
+            pixelsPerUnit = std::max(5.0f, pixelsPerUnit * 0.9f);
+        }
+        if (IsKeyPressed(KEY_EQUAL)) {
+            pixelsPerUnit = std::min(120.0f, pixelsPerUnit * 1.1f);
+        }
+
+        // Stars with GR-like lensing: deflection ~ 4GM/(c^2 b).
+        // Approximate a backward ray-map with a radial 1/r shift toward the BH.
+        const double lensK = 0.5 * static_cast<double>(r_s); // tuning close to Einstein angle scale
         const double lensEps = 1e-6;
         for (const sim::Vec2& p : starsWorld) {
-            const double r2 = p.squaredNorm();
-            const double factor = (r2 > 0.0) ? (lensK / (r2 + lensEps)) : 0.0;
-            const sim::Vec2 lensed = p + factor * p;
+            const double r = p.norm();
+            const sim::Vec2 rhat = (r > 0.0) ? (p / r) : sim::Vec2(1.0, 0.0);
+            const double shift = lensK / std::max(r, lensEps);
+            const sim::Vec2 lensed = p - shift * rhat;
             Vector2 sp = worldToScreen(lensed, screenW, screenH, pixelsPerUnit);
             DrawPixelV(sp, (Color){200, 200, 255, 255});
         }
@@ -231,21 +261,46 @@ int main() {
         // Screen center
         const Vector2 screenCenter = {static_cast<float>(screenW) * 0.5f, static_cast<float>(screenH) * 0.5f};
 
-        // Accretion disk ring (striped via varying brightness)
+        // Accretion disk with Doppler beaming and blue/red tint
         const int segs = 180;
-        for (int a = 0; a < 360; a += 4) {
+        const double G = grav.gravitationalConstant;
+        const double M = grav.blackHoleMass;
+        const double c = grav.speedOfLight;
+        const double rMid = 0.5 * (diskInner + diskOuter);
+        const double v_orb = std::sqrt(std::max(0.0, (G * M) / std::max(rMid, 1e-6))); // Newtonian orbital speed
+        const double beta = std::min(0.95, v_orb / std::max(c, 1e-9));
+        const double gamma = 1.0 / std::sqrt(std::max(1e-9, 1.0 - beta * beta));
+        const sim::Vec2 viewDir(-1.0, 0.0); // camera looks toward +x from -infinity
+        for (int a = 0; a < 360; a += 2) {
             float ang = (a * DEG2RAD) + diskAngle;
-            float brightness = 0.6f + 0.4f * std::sin(5.0f * ang);
-            Color col = ColorFromHSV(35.0f, 0.9f, brightness);
+            sim::Vec2 velDir(-std::sin(ang), std::cos(ang)); // tangential direction
+            double cosTheta = velDir.dot(viewDir);
+            double D = 1.0 / (gamma * std::max(1e-6, 1.0 - beta * cosTheta));
+            double boost = std::pow(D, 3.0); // intensity beaming approx
+            float brightness = static_cast<float>(std::clamp(0.45 + 0.55 * boost, 0.3, 3.0));
+            // Hue: approaching -> blue (210 deg), receding -> red (0 deg)
+            float hue = (cosTheta > 0.0) ? 210.0f : 0.0f;
+            float sat = 0.85f;
+            Color col = ColorFromHSV(hue, sat, std::min(1.0f, brightness));
             DrawRing(screenCenter,
                      diskInner * pixelsPerUnit,
                      diskOuter * pixelsPerUnit,
-                     static_cast<float>(a), static_cast<float>(a + 4),
+                     static_cast<float>(a), static_cast<float>(a + 2),
                      segs, col);
         }
 
-        // Black hole (filled only; remove border lines)
+        // Black hole event horizon and stylized blue/purple glow
         DrawCircleV(screenCenter, r_s * pixelsPerUnit, BLACK);
+        // subtle blue glow just outside horizon
+        DrawRing(screenCenter,
+                 (r_s + 0.03f * r_s) * pixelsPerUnit,
+                 (r_s + 0.20f * r_s) * pixelsPerUnit,
+                 0, 360, 128, (Color){80, 120, 255, 70});
+        // photon sphere highlight
+        DrawRing(screenCenter,
+                 (r_ph - 0.02f * r_s) * pixelsPerUnit,
+                 (r_ph + 0.03f * r_s) * pixelsPerUnit,
+                 0, 360, 128, (Color){180, 120, 255, 120});
 
         // Draw rays
         for (auto& rr : rays) {
@@ -267,7 +322,8 @@ int main() {
             DrawText(previewPred >= 0 ? "pred: escape" : "pred: capture", 20, 230, 20, pc);
         }
 
-        DrawText("Blackhole Sim - Auto Rays (Step 3.3)", 20, 20, 20, RAYWHITE);
+        DrawText("Blackhole Sim - GR Curvature", 20, 20, 20, RAYWHITE);
+        DrawText(TextFormat("R_s=%.2f  b_c=%.2f  bend=%.2f  [/]  zoom -/+", r_s, (0.5f*3.0f*sqrtf(3.0f))*r_s, (float)grav.bendingAngleScale), 20, 110, 18, RAYWHITE);
         DrawText("Auto-spawned rays from ring; color = SVM prediction", 20, 50, 20, RAYWHITE);
         DrawText(TextFormat("dataset=%d  svm_acc=%.1f%%", (int)spawnedDataset.size(), svmAcc * 100.0f), 20, 80, 20, RAYWHITE);
         EndDrawing();
@@ -278,5 +334,3 @@ int main() {
     CloseWindow();
     return 0;
 }
-
-
