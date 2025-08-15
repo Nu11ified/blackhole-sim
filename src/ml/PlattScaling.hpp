@@ -6,13 +6,17 @@
 
 namespace sim::ml {
 
-// Fit logistic: P(y=1|s) = 1 / (1 + exp(A s + B)) on decision scores s with labels y in {+1,-1}
+// Fit logistic: P(y=1|s) = 1 / (1 + exp(-(A s + B))) on decision scores s with labels y in {+1,-1}
 struct PlattScaler {
     float A{0.0f};
     float B{0.0f};
     bool fitted{false};
 
-    static float sigmoid(float t) { return 1.0f / (1.0f + std::exp(t)); }
+    // Standard logistic sigmoid; previous implementation used `exp(t)` which
+    // incorrectly flipped the probability for positive inputs (p(t>0)<0.5).
+    // Using `exp(-t)` yields the conventional monotonically increasing
+    // function in [0,1].
+    static float sigmoid(float t) { return 1.0f / (1.0f + std::exp(-t)); }
 
     void fit(const std::vector<float>& scores, const std::vector<int>& labels, int iters = 200, float lr = 0.01f) {
         if (scores.empty()) { fitted = false; return; }
